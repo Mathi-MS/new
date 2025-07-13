@@ -31,7 +31,7 @@ const swaggerOptions = {
     customJS: ['/js/swagger-fetch-button.js'] // Add our custom JavaScript
 };
 // Standard Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerOptions));
+app.use('/api-docs', swaggerUi.setup(specs, swaggerOptions));
 // Custom Swagger UI with fetch button
 app.get('/api-docs-custom', (req, res) => {
     res.sendFile(path_1.default.join(__dirname, 'public', 'swagger-ui-custom.html'));

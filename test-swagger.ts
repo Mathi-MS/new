@@ -29,7 +29,7 @@ app.get('/test', (req, res) => {
 });
 
 // Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(minimalSpecs));
+app.use('/api-docs', swaggerUi.setup(minimalSpecs));
 
 // Serve Swagger JSON
 app.get('/api-docs/swagger.json', (req, res) => {

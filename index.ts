@@ -52,7 +52,7 @@ const swaggerOptions = {
 };
 
 // Standard Swagger UI
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerOptions));
+app.use('/api-docs', swaggerUi.setup(specs, swaggerOptions));
 
 // Custom Swagger UI with fetch button
 app.get('/api-docs-custom', (req, res) => {
