@@ -4,12 +4,12 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
+    "build": "tsc",
     "dev": "cross-env NODE_ENV=development nodemon index.ts",
     "qa": "cross-env NODE_ENV=qa nodemon index.ts",
     "uat": "cross-env NODE_ENV=uat nodemon index.ts",
     "prod": "cross-env NODE_ENV=production nodemon index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -25,11 +25,9 @@
     "@types/swagger-ui-express": "^4.1.8",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
-    "cross-env": "^7.0.3",
     "eslint": "^8.56.0",
     "nodemon": "^3.0.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "@types/axios": "^0.14.4",
@@ -38,6 +36,7 @@
     "bcrypt": "^6.0.0",
     "class-validator": "^0.14.2",
     "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
     "dotenv": "^16.3.1",
     "exceljs": "^4.4.0",
     "express": "^4.17.1",
@@ -52,6 +51,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "typedi": "^0.10.0",
+    "typescript": "^5.3.3",
     "uuid": "^9.0.1",
     "xlsx": "^0.18.5"
   }
