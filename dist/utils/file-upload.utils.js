@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.lyricsUpload = exports.musicThumbnailUpload = exports.imageUpload = exports.audioUpload = exports.createLyricsUpload = exports.createMusicThumbnailUpload = exports.createImageUpload = exports.createAudioUpload = void 0;
+exports.playlistThumbnailUpload = exports.lyricsUpload = exports.musicThumbnailUpload = exports.imageUpload = exports.audioUpload = exports.createPlaylistThumbnailUpload = exports.createLyricsUpload = exports.createMusicThumbnailUpload = exports.createImageUpload = exports.createAudioUpload = void 0;
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -15,7 +15,9 @@ console.log('Base upload directory path:', baseUploadDir);
 // Create subdirectories for different file types
 const musicUploadDir = path_1.default.join(baseUploadDir, 'Music');
 const profilesUploadDir = path_1.default.join(baseUploadDir, 'Profiles');
+const playlistsUploadDir = path_1.default.join(baseUploadDir, 'Playlists');
 const thumbnailsUploadDir = path_1.default.join(musicUploadDir, 'thumbnails');
+const playlistThumbnailsUploadDir = path_1.default.join(playlistsUploadDir, 'thumbnails');
 const lyricsUploadDir = path_1.default.join(musicUploadDir, 'lyrics');
 // Ensure all directories exist
 const createDirIfNotExists = (dirPath) => {
@@ -27,7 +29,9 @@ const createDirIfNotExists = (dirPath) => {
 createDirIfNotExists(baseUploadDir);
 createDirIfNotExists(musicUploadDir);
 createDirIfNotExists(profilesUploadDir);
+createDirIfNotExists(playlistsUploadDir);
 createDirIfNotExists(thumbnailsUploadDir);
+createDirIfNotExists(playlistThumbnailsUploadDir);
 createDirIfNotExists(lyricsUploadDir);
 // Configure storage for music files
 const musicStorage = multer_1.default.diskStorage({
@@ -75,6 +79,18 @@ const lyricsStorage = multer_1.default.diskStorage({
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         const ext = path_1.default.extname(file.originalname) || '.lrc'; // Default to .lrc if no extension
         cb(null, 'lyrics-' + uniqueSuffix + ext);
+    }
+});
+// Configure storage for playlist thumbnails
+const playlistThumbnailStorage = multer_1.default.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, playlistThumbnailsUploadDir);
+    },
+    filename: function (req, file, cb) {
+        // Create a unique filename with original extension
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path_1.default.extname(file.originalname);
+        cb(null, 'playlist-thumbnail-' + uniqueSuffix + ext);
     }
 });
 // File filter for audio files
@@ -188,9 +204,41 @@ const createLyricsUpload = (maxFileSize = upload_config_1.default.LYRICS.SIZE.DE
     });
 };
 exports.createLyricsUpload = createLyricsUpload;
+/**
+ * Create a multer instance for playlist thumbnail uploads with custom file size limit
+ * @param maxFileSize Maximum file size in bytes (default: from environment config)
+ * @returns Configured multer instance
+ */
+const createPlaylistThumbnailUpload = (maxFileSize = config_1.default.fileUpload.maxSize) => {
+    console.log(`Creating playlist thumbnail upload middleware with max file size: ${maxFileSize / (1024 * 1024)}MB`);
+    return (0, multer_1.default)({
+        storage: playlistThumbnailStorage,
+        fileFilter: imageFileFilter,
+        limits: {
+            fileSize: Math.min(Math.max(maxFileSize, upload_config_1.default.IMAGE.SIZE.MIN), upload_config_1.default.IMAGE.SIZE.MAX), // Ensure size is within allowed range
+            files: 1, // Only one thumbnail at a time
+            fieldNameSize: upload_config_1.default.GENERAL.MAX_FIELD_NAME_SIZE,
+            fieldSize: upload_config_1.default.GENERAL.MAX_FIELD_VALUE_SIZE
+        }
+    });
+};
+exports.createPlaylistThumbnailUpload = createPlaylistThumbnailUpload;
 // Create instances with environment-specific file size limits
 exports.audioUpload = (0, exports.createAudioUpload)();
 exports.imageUpload = (0, exports.createImageUpload)();
 exports.musicThumbnailUpload = (0, exports.createMusicThumbnailUpload)();
 exports.lyricsUpload = (0, exports.createLyricsUpload)();
+// Create and export the playlist thumbnail upload middleware directly
+console.log('Creating playlist thumbnail upload middleware...');
+exports.playlistThumbnailUpload = (0, multer_1.default)({
+    storage: playlistThumbnailStorage,
+    fileFilter: imageFileFilter,
+    limits: {
+        fileSize: config_1.default.fileUpload.maxSize || 5 * 1024 * 1024, // Use config or default to 5MB
+        files: 1,
+        fieldNameSize: 100,
+        fieldSize: 1024 * 1024 // 1MB
+    }
+});
+console.log('Playlist thumbnail upload middleware created successfully');
 //# sourceMappingURL=file-upload.utils.js.map

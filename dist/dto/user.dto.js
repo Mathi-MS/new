@@ -58,6 +58,7 @@ class FavoriteMusicResponseDTO {
     static toResponse(music) {
         const dto = new FavoriteMusicResponseDTO();
         dto.id = music._id.toString();
+        dto.title = music.title;
         dto.language = music.language;
         dto.syllabus = music.syllabus;
         dto.subject = music.subject;

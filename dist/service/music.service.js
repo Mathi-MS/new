@@ -96,6 +96,14 @@ class MusicService {
         });
     }
     /**
+     * Find music by filter criteria with cursor-based pagination
+     */
+    findMusicWithPagination(filter, cursor, limit = 10, sortField = '_id', sortOrder = 'asc') {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield this.musicRepository.findMusicWithPagination(filter, cursor, limit, sortField, sortOrder);
+        });
+    }
+    /**
      * Find music by language
      */
     findByLanguage(language) {

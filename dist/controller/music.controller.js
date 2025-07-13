@@ -31,6 +31,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -84,7 +95,7 @@ class MusicController {
          * @swagger
          * /v1/music:
          *   get:
-         *     summary: Get all music entries
+         *     summary: Get all music entries with cursor-based pagination
          *     tags: [Music]
          *     security:
          *       - bearerAuth: []
@@ -95,9 +106,40 @@ class MusicController {
          *           type: string
          *         required: false
          *         description: Optional user ID to check favorite status for each music
+         *       - in: query
+         *         name: cursor
+         *         schema:
+         *           type: string
+         *         required: false
+         *         description: Cursor for pagination (use the nextCursor value from the previous response to get the next page)
+         *       - in: query
+         *         name: limit
+         *         schema:
+         *           type: integer
+         *           minimum: 1
+         *           maximum: 100
+         *           default: 10
+         *         required: false
+         *         description: Number of items to return per page
+         *       - in: query
+         *         name: sortField
+         *         schema:
+         *           type: string
+         *           default: "_id"
+         *           enum: ["_id", "title", "createdAt", "updatedAt"]
+         *         required: false
+         *         description: Field to sort by
+         *       - in: query
+         *         name: sortOrder
+         *         schema:
+         *           type: string
+         *           default: "asc"
+         *           enum: ["asc", "desc"]
+         *         required: false
+         *         description: Sort order (ascending or descending)
          *     responses:
          *       200:
-         *         description: List of all music entries
+         *         description: List of music entries with pagination metadata
          *         content:
          *           application/json:
          *             schema:
@@ -115,39 +157,112 @@ class MusicController {
          *                           isFavorite:
          *                             type: boolean
          *                             description: Whether the music is in user's favorites (only when userId is provided)
+         *                 pagination:
+         *                   type: object
+         *                   properties:
+         *                     hasNextPage:
+         *                       type: boolean
+         *                       description: Whether there are more items available
+         *                     nextCursor:
+         *                       type: string
+         *                       description: Cursor to use for the next page (only present if hasNextPage is true)
+         *                       nullable: true
+         *                       example: "60d21b4667d0d8992e610c85"
+         *                     totalCount:
+         *                       type: integer
+         *                       description: Total number of items matching the query (without pagination)
+         *                       example: 150
+         *                     currentCount:
+         *                       type: integer
+         *                       description: Number of items in the current page
+         *                       example: 10
+         *                     limit:
+         *                       type: integer
+         *                       description: Requested limit per page
+         *                       example: 10
          */
         this.getAllMusic = (0, express_async_handler_1.default)((req, res) => __awaiter(this, void 0, void 0, function* () {
+            // Extract pagination parameters from query
+            const cursor = req.query.cursor;
+            const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+            const sortField = req.query.sortField || '_id';
+            const sortOrder = (req.query.sortOrder || 'asc');
+            // Validate limit to prevent performance issues
+            const validatedLimit = Math.min(Math.max(1, limit), 100);
             // Check if userId is provided in query params for favorite status
             const userId = req.query.userId;
             if (userId) {
-                // Get all music with favorite status
+                // Get music with favorite status and pagination
                 try {
+                    // First get paginated music data
+                    const paginatedResult = yield this.musicService.findMusicWithPagination({}, // empty filter to get all music
+                    cursor, validatedLimit, sortField, sortOrder);
+                    // Then check favorite status for each music item
                     const musicWithFavorites = yield this.musicService.getAllMusicWithFavoriteStatus(userId);
-                    // Transform the result to include isFavorite in each music object
-                    const transformedMusic = musicWithFavorites.map(item => (Object.assign(Object.assign({}, item.music.toObject()), { isFavorite: item.isFavorite })));
+                    // Create a map of music IDs to favorite status for efficient lookup
+                    const favoriteStatusMap = new Map(musicWithFavorites.map(item => [item.music._id.toString(), item.isFavorite]));
+                    // Transform the paginated results to include isFavorite
+                    const transformedMusic = paginatedResult.data.map(music => (Object.assign(Object.assign({}, music.toObject()), { isFavorite: favoriteStatusMap.get(music._id.toString()) || false })));
+                    // Prepare pagination info with nextCursor only if there's a next page
+                    const paginationInfo = {
+                        hasNextPage: paginatedResult.hasNextPage,
+                        totalCount: paginatedResult.totalCount,
+                        currentCount: paginatedResult.data.length,
+                        limit: validatedLimit
+                    };
+                    // Only include nextCursor if there are more pages
+                    if (paginatedResult.hasNextPage && paginatedResult.nextCursor) {
+                        Object.assign(paginationInfo, { nextCursor: paginatedResult.nextCursor });
+                    }
                     res.status(http_status_code_1.HTTPStatusCode.Ok).json({
                         success: true,
-                        data: transformedMusic
+                        data: transformedMusic,
+                        pagination: paginationInfo
                     });
                 }
                 catch (error) {
                     if (error instanceof custom_error_1.default) {
                         throw error;
                     }
-                    // If there's an error with favorite status, fall back to regular music retrieval
-                    const music = yield this.musicService.getAllMusic();
+                    // If there's an error with favorite status, fall back to regular paginated music retrieval
+                    const paginatedResult = yield this.musicService.findMusicWithPagination({}, cursor, validatedLimit, sortField, sortOrder);
+                    // Prepare pagination info with nextCursor only if there's a next page
+                    const paginationInfo = {
+                        hasNextPage: paginatedResult.hasNextPage,
+                        totalCount: paginatedResult.totalCount,
+                        currentCount: paginatedResult.data.length,
+                        limit: validatedLimit
+                    };
+                    // Only include nextCursor if there are more pages
+                    if (paginatedResult.hasNextPage && paginatedResult.nextCursor) {
+                        Object.assign(paginationInfo, { nextCursor: paginatedResult.nextCursor });
+                    }
                     res.status(http_status_code_1.HTTPStatusCode.Ok).json({
                         success: true,
-                        data: music
+                        data: paginatedResult.data,
+                        pagination: paginationInfo
                     });
                 }
             }
             else {
-                // Regular music retrieval without favorite status
-                const music = yield this.musicService.getAllMusic();
+                // Regular paginated music retrieval without favorite status
+                const paginatedResult = yield this.musicService.findMusicWithPagination({}, cursor, validatedLimit, sortField, sortOrder);
+                // Prepare pagination info with nextCursor only if there's a next page
+                const paginationInfo = {
+                    hasNextPage: paginatedResult.hasNextPage,
+                    totalCount: paginatedResult.totalCount,
+                    nextCursor: paginatedResult.nextCursor || null,
+                    currentCount: paginatedResult.data.length,
+                    limit: validatedLimit
+                };
+                // Only include nextCursor if there are more pages
+                if (paginatedResult.hasNextPage && paginatedResult.nextCursor) {
+                    Object.assign(paginationInfo, { nextCursor: paginatedResult.nextCursor });
+                }
                 res.status(http_status_code_1.HTTPStatusCode.Ok).json({
                     success: true,
-                    data: music
+                    data: paginatedResult.data,
+                    pagination: paginationInfo
                 });
             }
         }));
@@ -625,29 +740,65 @@ class MusicController {
         /**
          * @swagger
          * /v1/music/filter:
-         *   post:
-         *     summary: Filter music by criteria
+         *   get:
+         *     summary: Filter music by criteria with cursor-based pagination
          *     tags: [Music]
-         *     security:
-         *       - bearerAuth: []
-         *     requestBody:
-         *       required: true
-         *       content:
-         *         application/json:
-         *           schema:
-         *             type: object
-         *             properties:
-         *               language:
-         *                 type: string
-         *               syllabus:
-         *                 type: string
-         *               subject:
-         *                 type: string
-         *               class:
-         *                 type: string
+         *     parameters:
+         *       - in: query
+         *         name: language
+         *         schema:
+         *           type: string
+         *         description: Filter by language
+         *       - in: query
+         *         name: syllabus
+         *         schema:
+         *           type: string
+         *         description: Filter by syllabus
+         *       - in: query
+         *         name: subject
+         *         schema:
+         *           type: string
+         *         description: Filter by subject
+         *       - in: query
+         *         name: class
+         *         schema:
+         *           type: string
+         *         description: Filter by class/grade level
+         *       - in: query
+         *         name: title
+         *         schema:
+         *           type: string
+         *         description: Filter by title (partial match)
+         *       - in: query
+         *         name: cursor
+         *         schema:
+         *           type: string
+         *         description: Cursor for pagination (use nextCursor from previous response)
+         *       - in: query
+         *         name: limit
+         *         schema:
+         *           type: integer
+         *           minimum: 1
+         *           maximum: 100
+         *           default: 10
+         *         description: Number of items per page
+         *       - in: query
+         *         name: sortField
+         *         schema:
+         *           type: string
+         *           enum: [_id, title, createdAt, updatedAt]
+         *           default: _id
+         *         description: Field to sort by
+         *       - in: query
+         *         name: sortOrder
+         *         schema:
+         *           type: string
+         *           enum: [asc, desc]
+         *           default: asc
+         *         description: Sort order
          *     responses:
          *       200:
-         *         description: Filtered music entries
+         *         description: Filtered music entries with pagination
          *         content:
          *           application/json:
          *             schema:
@@ -655,18 +806,79 @@ class MusicController {
          *               properties:
          *                 success:
          *                   type: boolean
+         *                   example: true
          *                 data:
          *                   type: array
          *                   items:
          *                     $ref: '#/components/schemas/Music'
+         *                 pagination:
+         *                   type: object
+         *                   properties:
+         *                     hasNextPage:
+         *                       type: boolean
+         *                       example: true
+         *                     nextCursor:
+         *                       type: string
+         *                       nullable: true
+         *                       example: "507f1f77bcf86cd799439011"
+         *                       description: "Cursor for next page, null if no next page"
+         *                     totalCount:
+         *                       type: integer
+         *                       example: 150
+         *                     currentCount:
+         *                       type: integer
+         *                       example: 10
+         *                     limit:
+         *                       type: integer
+         *                       example: 10
+         *                 filters:
+         *                   type: object
+         *                   description: Applied filters
          */
         this.filterMusic = (0, express_async_handler_1.default)((req, res) => __awaiter(this, void 0, void 0, function* () {
-            const filter = req.body;
-            const music = yield this.musicService.findMusic(filter);
-            res.status(http_status_code_1.HTTPStatusCode.Ok).json({
-                success: true,
-                data: music
+            // Extract filter parameters from query
+            const _a = req.query, { cursor, limit, sortField, sortOrder } = _a, filterParams = __rest(_a, ["cursor", "limit", "sortField", "sortOrder"]);
+            // Build filter object, excluding empty values
+            const filter = {};
+            Object.entries(filterParams).forEach(([key, value]) => {
+                if (value && typeof value === 'string' && value.trim() !== '') {
+                    // Handle title with partial matching
+                    if (key === 'title') {
+                        filter[key] = { $regex: value.trim(), $options: 'i' };
+                    }
+                    else {
+                        filter[key] = value.trim();
+                    }
+                }
             });
+            // Parse pagination parameters
+            const pageLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 100);
+            const field = sortField || '_id';
+            const order = sortOrder || 'asc';
+            // Validate sort field
+            const allowedSortFields = ['_id', 'title', 'createdAt', 'updatedAt'];
+            const validSortField = allowedSortFields.includes(field) ? field : '_id';
+            try {
+                const result = yield this.musicService.findMusicWithPagination(filter, cursor, pageLimit, validSortField, order);
+                res.status(http_status_code_1.HTTPStatusCode.Ok).json({
+                    success: true,
+                    data: result.data,
+                    pagination: {
+                        hasNextPage: result.hasNextPage,
+                        nextCursor: result.nextCursor || null,
+                        totalCount: result.totalCount,
+                        currentCount: result.data.length,
+                        limit: pageLimit
+                    },
+                    filters: filter
+                });
+            }
+            catch (error) {
+                res.status(http_status_code_1.HTTPStatusCode.InternalServerError).json({
+                    success: false,
+                    message: `Error filtering music: ${error.message}`
+                });
+            }
         }));
         /**
          * @swagger
@@ -1180,6 +1392,163 @@ class MusicController {
                         message: `Error deleting lyrics file: ${error.message}`
                     });
                 }
+            }
+        }));
+        /**
+         * @swagger
+         * /v1/music/thumbnails/list:
+         *   get:
+         *     summary: Get thumbnail files with base64 encoded content (all or filtered by filename array)
+         *     tags: [Music]
+         *     security:
+         *       - bearerAuth: []
+         *     parameters:
+         *       - in: query
+         *         name: filenames
+         *         schema:
+         *           type: array
+         *           items:
+         *             type: string
+         *         style: form
+         *         explode: true
+         *         example: ["thumbnail-1234567890.jpg", "profile-image.png"]
+         *         description: Array of specific filenames to retrieve (optional - if not provided, returns all)
+         *     responses:
+         *       200:
+         *         description: Thumbnail files with base64 encoded content
+         *         content:
+         *           application/json:
+         *             schema:
+         *               type: object
+         *               properties:
+         *                 success:
+         *                   type: boolean
+         *                   example: true
+         *                 data:
+         *                   type: array
+         *                   items:
+         *                     type: object
+         *                     properties:
+         *                       filename:
+         *                         type: string
+         *                         example: "thumbnail-1751186160714-584250547.webp"
+         *                       content:
+         *                         type: string
+         *                         format: byte
+         *                         description: Base64 encoded file content
+         *                       mimeType:
+         *                         type: string
+         *                         example: "image/webp"
+         *                       mediaType:
+         *                         type: string
+         *                         example: "image"
+         *                       size:
+         *                         type: number
+         *                         example: 886
+         *                 count:
+         *                   type: number
+         *                   example: 1
+         *                 message:
+         *                   type: string
+         *                   example: "Thumbnail files downloaded successfully (filtered by 1 requested filenames)"
+         *       404:
+         *         description: No thumbnail files found
+         *         content:
+         *           application/json:
+         *             schema:
+         *               $ref: '#/components/schemas/Error'
+         *       500:
+         *         description: Internal server error
+         *         content:
+         *           application/json:
+         *             schema:
+         *               $ref: '#/components/schemas/Error'
+         */
+        this.getThumbnailList = (0, express_async_handler_1.default)((req, res) => __awaiter(this, void 0, void 0, function* () {
+            try {
+                // Handle filenames from query parameters (can be a single string or array)
+                let requestedFilenames = [];
+                if (req.query.filenames) {
+                    if (Array.isArray(req.query.filenames)) {
+                        requestedFilenames = req.query.filenames;
+                    }
+                    else {
+                        requestedFilenames = [req.query.filenames];
+                    }
+                }
+                const thumbnailDir = path_1.default.join(__dirname, '..', 'uploads', 'Music', 'thumbnails');
+                // Check if thumbnails directory exists
+                if (!fs_1.default.existsSync(thumbnailDir)) {
+                    return res.status(http_status_code_1.HTTPStatusCode.Ok).json({
+                        success: true,
+                        data: [],
+                        count: 0,
+                        message: 'No thumbnails directory found'
+                    });
+                }
+                // Read all files from thumbnails directory
+                const files = fs_1.default.readdirSync(thumbnailDir);
+                // Filter only image files (common image extensions)
+                const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+                let thumbnailFiles = files.filter(file => {
+                    const ext = path_1.default.extname(file).toLowerCase();
+                    return imageExtensions.includes(ext);
+                });
+                // If specific filenames are requested, filter by those
+                if (requestedFilenames && Array.isArray(requestedFilenames) && requestedFilenames.length > 0) {
+                    thumbnailFiles = thumbnailFiles.filter(file => requestedFilenames.includes(file));
+                }
+                // Sort files alphabetically
+                thumbnailFiles.sort();
+                // Read file contents and prepare response data
+                const thumbnailData = [];
+                for (const filename of thumbnailFiles) {
+                    try {
+                        const filePath = path_1.default.join(thumbnailDir, filename);
+                        const fileContent = fs_1.default.readFileSync(filePath);
+                        const stats = fs_1.default.statSync(filePath);
+                        const extension = path_1.default.extname(filename).toLowerCase();
+                        // Determine MIME type
+                        let mimeType = 'image/jpeg'; // Default
+                        if (extension === '.png')
+                            mimeType = 'image/png';
+                        else if (extension === '.gif')
+                            mimeType = 'image/gif';
+                        else if (extension === '.webp')
+                            mimeType = 'image/webp';
+                        else if (extension === '.bmp')
+                            mimeType = 'image/bmp';
+                        else if (extension === '.svg')
+                            mimeType = 'image/svg+xml';
+                        thumbnailData.push({
+                            filename,
+                            content: fileContent.toString('base64'),
+                            mimeType,
+                            mediaType: 'image',
+                            size: stats.size
+                        });
+                    }
+                    catch (fileError) {
+                        console.error(`Error reading file ${filename}:`, fileError);
+                        // Skip this file and continue with others
+                    }
+                }
+                const message = requestedFilenames && requestedFilenames.length > 0
+                    ? `Thumbnail files downloaded successfully (filtered by ${requestedFilenames.length} requested filenames)`
+                    : 'All thumbnail files downloaded successfully';
+                res.status(http_status_code_1.HTTPStatusCode.Ok).json({
+                    success: true,
+                    data: thumbnailData,
+                    count: thumbnailData.length,
+                    message
+                });
+            }
+            catch (error) {
+                console.error('Error retrieving thumbnail files:', error);
+                res.status(http_status_code_1.HTTPStatusCode.InternalServerError).json({
+                    success: false,
+                    message: `Error retrieving thumbnail files: ${error.message}`
+                });
             }
         }));
         this.musicService = new music_service_1.MusicService();

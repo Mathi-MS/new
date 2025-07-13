@@ -76,10 +76,18 @@ router.get('/file/:filename', musicController.getMusicByFilename);
 router.get('/download/:filename', musicController.downloadMusicFile);
 // Download thumbnail - must come before the :id route
 router.get('/thumbnail/:fileName', musicController.downloadThumbnail);
+// Download lyrics - must come before the :id route
+router.get('/lyrics/:fileName', musicController.downloadLyrics);
+// Get list of thumbnail filenames (all or filtered by filename array) - must come before the :id route
+router.get('/thumbnails/list', musicController.getThumbnailList);
+// Filter route - public access for searching music
+router.get('/filter', musicController.filterMusic);
 // Delete music file - must come before the :id route (protected route)
 router.delete('/file/delete/:filename', auth_middleware_1.protect, (0, auth_middleware_1.authorize)(user_model_1.UserRole.TEACHER, user_model_1.UserRole.ADMIN), musicController.deleteMusicFile);
 // Delete thumbnail - must come before the :id route (protected route)
 router.delete('/thumbnail/:fileName', auth_middleware_1.protect, (0, auth_middleware_1.authorize)(user_model_1.UserRole.TEACHER, user_model_1.UserRole.ADMIN), musicController.deleteThumbnail);
+// Delete lyrics - must come before the :id route (protected route)
+router.delete('/lyrics/:fileName', auth_middleware_1.protect, (0, auth_middleware_1.authorize)(user_model_1.UserRole.TEACHER, user_model_1.UserRole.ADMIN), musicController.deleteLyrics);
 // Simple test route for upload path - must come before the :id route
 router.get('/test/upload', (req, res) => {
     res.status(200).json({
@@ -149,8 +157,8 @@ router.use((0, auth_middleware_1.authorize)(user_model_1.UserRole.TEACHER, user_
 router.post('/upload', file_upload_utils_1.audioUpload.single('audioFile'), upload_middleware_1.handleUploadErrors, musicController.uploadMusicFile);
 // Thumbnail upload route
 router.post('/upload/thumbnail', file_upload_utils_1.musicThumbnailUpload.single('imageFile'), upload_middleware_1.handleUploadErrors, musicController.uploadThumbnail);
-// Filter route
-router.post('/filter', musicController.filterMusic);
+// Lyrics upload route
+router.post('/upload/lyrics', file_upload_utils_1.lyricsUpload.single('lyricsFile'), upload_middleware_1.handleUploadErrors, musicController.uploadLyrics);
 // General routes
 router.post('/', musicController.createMusic);
 router.put('/:id', musicController.updateMusic);

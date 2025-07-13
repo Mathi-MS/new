@@ -25,6 +25,7 @@ const custom_error_1 = __importDefault(require("../config/custom.error"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const http_status_code_1 = require("../config/enum/http-status.code");
 const music_model_1 = __importDefault(require("../model/music.model"));
+const excel_utils_1 = require("../utils/excel.utils");
 let UserService = class UserService {
     getUsers() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -227,6 +228,49 @@ let UserService = class UserService {
                 }
                 throw new custom_error_1.default(`Failed to get raw user data: ${error.message}`, http_status_code_1.HTTPStatusCode.InternalServerError);
             }
+        });
+    }
+    /**
+     * Bulk create users from Excel upload
+     * @param users Array of user data from Excel
+     * @returns Result of bulk upload operation
+     */
+    bulkCreateUsers(users) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const result = {
+                totalProcessed: users.length,
+                successful: 0,
+                failed: 0,
+                errors: []
+            };
+            // Process each user
+            for (let i = 0; i < users.length; i++) {
+                try {
+                    const userData = users[i];
+                    // Validate required fields
+                    if (!userData.firstName || !userData.lastName || !userData.username ||
+                        !userData.password || !userData.age || !userData.gender ||
+                        !userData.mobileNumber || !userData.role) {
+                        throw new Error("Missing required fields");
+                    }
+                    // Generate UID
+                    const uid = (0, excel_utils_1.generateUID)();
+                    // Create user with UID
+                    yield user_model_1.default.create(Object.assign(Object.assign({}, userData), { uid }));
+                    result.successful++;
+                }
+                catch (error) {
+                    result.failed++;
+                    result.errors.push({
+                        index: i,
+                        username: users[i].username || `Row ${i + 2}`, // +2 because Excel is 1-indexed and has a header row
+                        error: error.code === 11000
+                            ? "Username or email already exists"
+                            : error.message || "Unknown error"
+                    });
+                }
+            }
+            return result;
         });
     }
 };

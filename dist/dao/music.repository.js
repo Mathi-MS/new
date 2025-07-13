@@ -118,6 +118,52 @@ class MusicRepository {
         });
     }
     /**
+     * Find music by filter criteria with cursor-based pagination
+     */
+    findMusicWithPagination(filter, cursor, limit = 10, sortField = '_id', sortOrder = 'asc') {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                // Build the query
+                let query = Object.assign({}, filter);
+                // Add cursor condition if provided
+                if (cursor) {
+                    const cursorCondition = sortOrder === 'asc'
+                        ? { $gt: cursor }
+                        : { $lt: cursor };
+                    query[sortField] = cursorCondition;
+                }
+                // Build sort object
+                const sort = {};
+                sort[sortField] = sortOrder === 'asc' ? 1 : -1;
+                // Execute query with limit + 1 to check if there's a next page
+                const results = yield music_model_1.default.find(query)
+                    .sort(sort)
+                    .limit(limit + 1);
+                // Check if there's a next page
+                const hasNextPage = results.length > limit;
+                const data = hasNextPage ? results.slice(0, limit) : results;
+                // Get next cursor
+                let nextCursor;
+                if (hasNextPage && data.length > 0) {
+                    const lastItem = data[data.length - 1];
+                    nextCursor = (_a = lastItem[sortField]) === null || _a === void 0 ? void 0 : _a.toString();
+                }
+                // Get total count for the filter (without pagination)
+                const totalCount = yield music_model_1.default.countDocuments(filter);
+                return {
+                    data,
+                    hasNextPage,
+                    nextCursor,
+                    totalCount
+                };
+            }
+            catch (error) {
+                throw new custom_error_1.default(`Failed to find music with pagination: ${error.message}`, http_status_code_1.HTTPStatusCode.InternalServerError);
+            }
+        });
+    }
+    /**
      * Find music by filename
      */
     findMusicByFilename(filename) {

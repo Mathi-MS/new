@@ -30,6 +30,12 @@ const handleUploadErrors = (err, req, res, next) => {
                             message: upload_config_1.default.IMAGE.ERRORS.SIZE
                         });
                     }
+                    else if (req.route.path.includes('playlist') || err.field === 'thumbnail') {
+                        return res.status(http_status_code_1.HTTPStatusCode.BadRequest).json({
+                            success: false,
+                            message: upload_config_1.default.IMAGE.ERRORS.SIZE
+                        });
+                    }
                     else {
                         return res.status(http_status_code_1.HTTPStatusCode.BadRequest).json({
                             success: false,
